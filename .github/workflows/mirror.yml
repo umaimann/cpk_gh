@@ -1,8 +1,12 @@
-
 name: mirror
 
 on:
   workflow_dispatch:
+    inputs:
+      urls:
+        description: "取得するページのURL(複数ならスペース区切り)"
+        required: true
+        default: "https://www.cho-kaguyahime.com/"
 
 permissions:
   contents: write
@@ -15,96 +19,173 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Download assets
+        env:
+          URLS: ${{ inputs.urls || 'https://www.cho-kaguyahime.com/' }}
         run: |
           python3 - <<'PY'
-          import re
-          import urllib.request
-          import urllib.parse
+          import os, re, json, hashlib, mimetypes
+          import html as H
+          import urllib.request, urllib.parse
+          from html.parser import HTMLParser
           from pathlib import Path
 
-          SITE = "https://www.cho-kaguyahime.com/"
+          PAGES = os.environ["URLS"].split()
+          MAIN = urllib.parse.urlparse(PAGES[0]).netloc
           OUT = Path("site")
-          seen = set()
+          LIMIT = 4000            # 取得ファイル数の上限
+          MAXB = 20_000_000       # 1ファイルの上限(jsDelivrの配信上限に合わせる)
 
-          def get(u):
+          # 解析・広告系は取得しない
+          SKIP = re.compile(
+              r"googletagmanager|google-analytics|doubleclick|googlesyndication|"
+              r"facebook\.net|clarity\.ms|typekit\.net|"
+              r"youtube\.com/(?:iframe_api|embed|watch)", re.I)
+
+          EXT = (r"(?:png|jpe?g|gif|webp|avif|svg|ico|bmp|css|js|mjs|json|"
+                 r"woff2?|ttf|otf|eot|mp4|webm|mp3|ogg|wav|glb|gltf|wasm)")
+          STOP = r'''\s"'`()<>\\,'''
+          ABS_RE = re.compile(
+              r"(?:https?:)?//[^" + STOP + r"]+?\." + EXT +
+              r"(?:\?[^" + STOP + r"]*)?(?=[" + STOP + r"]|$)", re.I)
+          API_RE = re.compile(
+              r"https?://[^" + STOP + r"]+/(?:wp-json|api)/[^" + STOP + r"]*", re.I)
+          REL_RE = re.compile(
+              r'''["'`]((?:\.{0,2}/)?(?:[\w\-.%@]+/)+[\w\-.%@]+\.''' + EXT +
+              r'''(?:\?[^"'`\s]*)?)["'`]''', re.I)
+          CSS_URL_RE = re.compile(r'''url\(\s*["']?([^)"']+?)["']?\s*\)''')
+          IMPORT_RE = re.compile(r'''@import\s+["']([^"']+)["']''')
+
+          seen = set()
+          MAPPING = {}   # 元のURL -> site/内のパス
+          LOCAL = {}
+          todo = []
+
+          def q(u):
+              return urllib.parse.quote(u, safe=":/?&=%#+@~,;!$*()'[]")
+
+          def req(u):
               r = urllib.request.Request(
-                  u, headers={"User-Agent": "Mozilla/5.0"}
-              )
-              return urllib.request.urlopen(r, timeout=60).read()
+                  q(u), headers={"User-Agent": "Mozilla/5.0", "Referer": PAGES[0]})
+              return urllib.request.urlopen(r, timeout=60)
 
           def save(rel, data):
               p = OUT / rel
               p.parent.mkdir(parents=True, exist_ok=True)
               p.write_bytes(data)
-              return p
 
-          def fetch(u):
-              u = u.split("#")[0].split("?")[0]
+          def local(key, ctype):
+              p = urllib.parse.urlparse(key)
+              suf = Path(urllib.parse.unquote(p.path)).suffix.lower()
+              if not re.fullmatch(r"\.[a-z0-9]{1,6}", suf):
+                  suf = ({"text/css": ".css", "application/json": ".json",
+                          "text/javascript": ".js", "application/javascript": ".js"}.get(ctype)
+                         or mimetypes.guess_extension(ctype) or ".bin")
+              # 同じサイトの普通のパスはそのまま、それ以外はハッシュ名で保存
+              if (p.netloc == MAIN and re.fullmatch(r"/[A-Za-z0-9_./%@+-]+", p.path)
+                      and Path(p.path).suffix):
+                  return p.path.lstrip("/")
+              return "ext/" + hashlib.sha1(key.encode()).hexdigest()[:12] + suf
 
-              if u in seen or not u.startswith(SITE):
+          def refs_in(text):
+              out = [m.group(0) for m in ABS_RE.finditer(text)]
+              out += API_RE.findall(text)
+              out += REL_RE.findall(text)
+              out += CSS_URL_RE.findall(text)
+              out += IMPORT_RE.findall(text)
+              return out
+
+          def add(ref, base):
+              ref = H.unescape(ref.strip())
+              if not ref or ref.startswith(("data:", "#", "javascript:", "mailto:", "tel:", "blob:")):
                   return
+              u = urllib.parse.urljoin(base, ref).split("#")[0]
+              if u.startswith("http"):
+                  todo.append(u)
 
-              seen.add(u)
-
+          def handle(u):
+              key = u.split("?")[0]
+              if key in seen or SKIP.search(u) or len(seen) >= LIMIT:
+                  return
+              seen.add(key)
               try:
-                  d = get(u)
+                  resp = req(u)
+                  data = resp.read()
+                  ctype = resp.headers.get_content_type()
               except Exception as e:
                   print("FAIL", u, e)
                   return
+              suf0 = Path(urllib.parse.unquote(urllib.parse.urlparse(key).path)).suffix.lower()
+              if ctype == "text/html" and suf0 not in (".html", ".htm"):
+                  print("SKIP(html)", u)
+                  return
+              if len(data) > MAXB:
+                  print("SKIP(too big)", u, len(data))
+                  return
+              rel = local(key, ctype)
+              save(rel, data)
+              LOCAL[key] = rel
+              MAPPING[key] = rel
+              print("OK", u, "->", rel)
+              if re.search(r"swiper-bundle\.min\.(css|js)$", key):
+                  save("vendor/" + key.rsplit("/", 1)[-1], data)
+              ext = Path(rel).suffix.lower()
+              if ext in (".css", ".js", ".mjs", ".json", ".html", ".htm"):
+                  text = data.decode("utf-8", "ignore")
+                  base = u if ext == ".css" else PAGES[0]
+                  for r in refs_in(text):
+                      add(r, base)
 
-              p = save(u[len(SITE):] or "index.html", d)
-              print("OK", u)
+          class P(HTMLParser):
+              def __init__(self):
+                  super().__init__(convert_charrefs=True)
+                  self.refs, self.css, self.js = [], [], []
+              def handle_starttag(self, tag, attrs):
+                  a = {k: (v or "") for k, v in attrs}
+                  if tag != "iframe":
+                      for k in ("src", "data-src", "poster", "data-bg", "data-background"):
+                          if a.get(k):
+                              self.refs.append(a[k])
+                  if tag == "script" and a.get("src"):
+                      self.js.append(a["src"])
+                  if tag == "link" and a.get("href"):
+                      rel = set(a.get("rel", "").lower().split())
+                      if rel & {"stylesheet", "icon", "shortcut", "apple-touch-icon", "preload",
+                                "prefetch", "modulepreload", "manifest", "mask-icon"}:
+                          self.refs.append(a["href"])
+                          if "stylesheet" in rel:
+                              self.css.append(a["href"])
+                  for k in ("srcset", "data-srcset"):
+                      for part in a.get(k, "").split(","):
+                          tok = part.strip().split(" ")[0]
+                          if tok:
+                              self.refs.append(tok)
 
-              if u.endswith(".png"):
-                  fetch(u[:-4] + ".webp")
+          def keyof(ref, page):
+              return urllib.parse.urljoin(page, H.unescape(ref.strip())).split("#")[0].split("?")[0]
 
-              if p.suffix in (".css", ".js", ".html"):
-                  t = d.decode("utf-8", "ignore")
+          manifest = {}
+          for page in PAGES:
+              try:
+                  raw = req(page).read().decode("utf-8", "ignore")
+              except Exception as e:
+                  print("FAIL page", page, e)
+                  continue
+              p = P()
+              p.feed(raw)
+              for r in p.refs:
+                  add(r, page)
+              for r in refs_in(raw):
+                  add(r, page)
+              while todo:
+                  handle(todo.pop())
+              manifest[page] = {
+                  "css": [LOCAL[k] for k in (keyof(r, page) for r in p.css) if k in LOCAL],
+                  "js": [LOCAL[k] for k in (keyof(r, page) for r in p.js) if k in LOCAL],
+              }
 
-                  for m in re.findall(r'url\(["\']?([^)"\']+)', t):
-                      if not m.startswith("data:"):
-                          fetch(urllib.parse.urljoin(u, m))
-
-                  for m in re.findall(
-                      r'https://www\.cho-kaguyahime\.com/[^\s"\'()<>\\]+', t
-                  ):
-                      fetch(m)
-
-                  for m in re.findall(
-                      r'["\'](assets/[^"\'?\s]+\.\w+)', t
-                  ):
-                      fetch(SITE + m)
-
-          fetch(SITE)
-
-          for f in [
-              "assets/css/common.css",
-              "assets/css/top.css",
-              "assets/js/libs/jquery-3.6.0.min.js",
-              "assets/js/libs/jquery.easing.min.js",
-              "assets/js/incparts.js",
-              "assets/js/jquery.common.js",
-              "assets/js/jquery.top.js"
-          ]:
-              fetch(SITE + f)
-
-          for n in range(12):
-              for k in [
-                  "thumb", "thumb-ac", "name", "name-en",
-                  "main", "main_sp", "main_2", "main_2_sp",
-                  "main_3", "main_3_sp"
-              ]:
-                  for ext in ["webp", "png", "svg"]:
-                      fetch(
-                          f"{SITE}assets/img/character/character_{n}{k}.{ext}"
-                      )
-
-          for ext in ["css", "js"]:
-              save(
-                  f"vendor/swiper-bundle.min.{ext}",
-                  get(f"https://cdn.jsdelivr.net/npm/swiper@8/swiper-bundle.min.{ext}")
-              )
-
+          save("map.json", json.dumps(MAPPING, ensure_ascii=False, indent=1).encode("utf-8"))
+          save("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=1).encode("utf-8"))
+          print("files:", len(MAPPING))
           PY
 
       - name: Commit
