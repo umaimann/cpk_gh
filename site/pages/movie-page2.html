@@ -171,16 +171,20 @@
 <script>var cont = 'movie';</script>
 <script>
 (async () => {
+  // ★自分のリポジトリ(jsDelivr経由)。raw を使う場合は下の行に差し替え
   const BASE = "https://cdn.jsdelivr.net/gh/umaimann/cpk_gh@main/site/";
+  // const BASE = "https://raw.githubusercontent.com/umaimann/cpk_gh/main/site/";
 
   const ORIG = "https://www.cho-kaguyahime.com/";
-  let MAP = {};
+  let MAP = {}; // 外部URL(ニュース画像・YouTubeサムネ等) → site/内のパス
 
+  // map.json(Actionsが作成)を読む。無くても続行
   try {
     const r = await fetch(BASE + "map.json");
     if (r.ok) MAP = await r.json();
   } catch (e) {}
 
+  // APIのページ数情報(Actionsが作成)。ページ送り表示に使われる
   let HDR = {};
   try {
     const r = await fetch(BASE + "api/_headers.json");
@@ -209,6 +213,7 @@
       if (s.includes(k)) s = s.split(k).join(BASE + MAP[k]);
     }
     s = s.split(ORIG).join(BASE);
+    // 文字列全体が1つのURLなら、エンコードの違いも吸収
     if (/^https?:\/\/\S+$/.test(s) && !s.startsWith(BASE)) {
       const hit = MAPN[dec(s.split("?")[0])];
       if (hit) s = BASE + hit;
@@ -216,15 +221,22 @@
     return s;
   };
 
+  // 画面に失敗したURLを出す(原因調べ用。不要なら削除してOK)
   const logBox = document.createElement("pre");
   logBox.style.cssText = "position:fixed;z-index:99999;left:0;bottom:0;max-width:100%;max-height:30vh;overflow:auto;margin:0;padding:4px;background:rgba(255,255,255,.9);color:#c00;font-size:10px;white-space:pre-wrap;display:none";
   document.body.appendChild(logBox);
-  const log = m => { logBox.style.display = "block"; logBox.textContent += m + "\n"; };
-  window.addEventListener("error", e => {
+  window.__cpkLogBox = logBox;
+  const log = m => { const b = window.__cpkLogBox; if (!b) return; b.style.display = "block"; b.textContent += m + "\n"; };
+  if (!window.__cpkErr) window.__cpkErr = e => {
     const t = e.target;
     if (t && (t.src || t.href)) log("LOAD FAIL: " + (t.currentSrc || t.src || t.href));
-  }, true);
+  };
+  window.addEventListener("error", window.__cpkErr, true);
 
+  // ★document.write後の再実行で二重パッチになると、ページ数ヘッダが消えてボタン/タップが死ぬ → 1回だけ
+  if (!window.__cpkPatched) {
+  window.__cpkPatched = true;
+  // new Image().src = ... / img.src = ... でも付け替える
   const d = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, "src");
   if (d && d.set) {
     Object.defineProperty(HTMLImageElement.prototype, "src", {
@@ -239,6 +251,7 @@
       }
     });
   }
+  // fetch / XMLHttpRequest のURLも付け替える
   const _fetch = window.fetch.bind(window);
   window.fetch = (r, o) => {
     const u = typeof r === "string" ? fix(r) : r;
@@ -273,7 +286,9 @@
     });
     return _open.call(this, m, nu, ...a);
   };
+  }
 
+  // 画像など: src / srcset / style を付け替え
   const ATTRS = ["src", "srcset", "style"];
   const fixEl = el => {
     if (!el || el.nodeType !== 1) return;
@@ -290,6 +305,7 @@
     if (n.querySelectorAll) n.querySelectorAll("[src],[srcset],[style]").forEach(fixEl);
   };
   fixTree(document.body);
+  // JSが後から追加・変更する要素も付け替える
   new MutationObserver(ms => {
     for (const m of ms) {
       if (m.type === "attributes") fixEl(m.target);
@@ -341,9 +357,18 @@
 </script>
 <script>if (!/[?&]page=/.test(location.search)) history.replaceState(null, '', '?page=2');</script>
 <script>
+// ページ送り: 「1」を押したとき、ページ移動せずにGitHubのHTMLを取得して、このページを置き換える
 (function () {
   var TARGET_LABEL = '1';
+  var TARGET_PAGE = ''; // 移動先のページ番号。1ページ目は空(= ?page を付けない)
   var TARGET_URL = 'https://cdn.jsdelivr.net/gh/umaimann/cpk_gh@main/site/pages/movie-page.html';
+  function setPageParam(p) {
+    try {
+      var u = new URL(location.href);
+      if (p) u.searchParams.set('page', p); else u.searchParams.delete('page');
+      history.replaceState(null, '', u.pathname + u.search + u.hash);
+    } catch (e) {}
+  }
   document.addEventListener('click', function (e) {
     var a = e.target.closest && e.target.closest('#pnav a');
     if (!a || a.textContent.trim() !== TARGET_LABEL) return;
@@ -351,7 +376,13 @@
     e.stopPropagation();
     fetch(TARGET_URL, { cache: 'no-cache' })
       .then(function (res) { if (!res.ok) throw new Error(res.status); return res.text(); })
-      .then(function (html) { document.open(); document.write(html); document.close(); window.scrollTo(0, 0); })
+      .then(function (html) {
+        // 前のページのjQueryイベントを全部外してから置き換える(二重初期化防止)
+        try { if (window.jQuery) { jQuery(window).off(); jQuery(document).off(); } } catch (err) {}
+        // ★移動先に合わせてURLの ?page= を直す(2→1で ?page=2 が残って2ページ目が再表示されるのを防ぐ)
+        setPageParam(TARGET_PAGE);
+        document.open(); document.write(html); document.close(); window.scrollTo(0, 0);
+      })
       .catch(function (err) { console.error('ページの取得に失敗:', err); location.href = TARGET_URL; });
   }, true);
 })();
