@@ -6,6 +6,17 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
 <meta name="format-detection" content="telephone=no, address=no, email=no">
 <meta name="theme-color" content="#FFF">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<script>
+// 元の fetch / XHR / img.src を退避(ページ送りの書き換え前に戻すため)。再実行されても上書きしない
+window.__cpkNative = window.__cpkNative || {
+  fetch: window.fetch,
+  open: XMLHttpRequest.prototype.open,
+  gah: XMLHttpRequest.prototype.getAllResponseHeaders,
+  grh: XMLHttpRequest.prototype.getResponseHeader,
+  imgSrc: Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src')
+};
+</script>
 </head>
 <body id="top" data-rt="https://www.cho-kaguyahime.com/" class="is-movie">
 
@@ -154,7 +165,7 @@
 	<div class="modal__inner">
 		<div class="modal__content">
 			<div class="modal__close js-modalClose_movie"></div>
-			<div class="modal__movieContent"><iframe width="560" height="315" src="" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe></div>
+			<div class="modal__movieContent"><iframe width="560" height="315" referrerpolicy="strict-origin-when-cross-origin" src="" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe></div>
 		</div>
 	</div>
 	<div class="modal__closeBtn"><a href="javascript:;" class="modal__closeBtnLink js-modalClose_movie"><span class="modal__closeBtnBox"><span class="modal__closeBtnLine modal__closeBtnLine--top"></span><span class="modal__closeBtnLine modal__closeBtnLine--bottom"></span><span class="gnav__menuLabel">CLOSE</span></span></a></div>
@@ -225,17 +236,12 @@
   const logBox = document.createElement("pre");
   logBox.style.cssText = "position:fixed;z-index:99999;left:0;bottom:0;max-width:100%;max-height:30vh;overflow:auto;margin:0;padding:4px;background:rgba(255,255,255,.9);color:#c00;font-size:10px;white-space:pre-wrap;display:none";
   document.body.appendChild(logBox);
-  window.__cpkLogBox = logBox;
-  const log = m => { const b = window.__cpkLogBox; if (!b) return; b.style.display = "block"; b.textContent += m + "\n"; };
-  if (!window.__cpkErr) window.__cpkErr = e => {
+  const log = m => { logBox.style.display = "block"; logBox.textContent += m + "\n"; };
+  window.addEventListener("error", e => {
     const t = e.target;
     if (t && (t.src || t.href)) log("LOAD FAIL: " + (t.currentSrc || t.src || t.href));
-  };
-  window.addEventListener("error", window.__cpkErr, true);
+  }, true);
 
-  // ★document.write後の再実行で二重パッチになると、ページ数ヘッダが消えてボタン/タップが死ぬ → 1回だけ
-  if (!window.__cpkPatched) {
-  window.__cpkPatched = true;
   // new Image().src = ... / img.src = ... でも付け替える
   const d = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, "src");
   if (d && d.set) {
@@ -286,7 +292,6 @@
     });
     return _open.call(this, m, nu, ...a);
   };
-  }
 
   // 画像など: src / srcset / style を付け替え
   const ATTRS = ["src", "srcset", "style"];
@@ -360,13 +365,25 @@
 // ページ送り: 「1」を押したとき、ページ移動せずにGitHubのHTMLを取得して、このページを置き換える
 (function () {
   var TARGET_LABEL = '1';
-  var TARGET_PAGE = ''; // 移動先のページ番号。1ページ目は空(= ?page を付けない)
+  var TARGET_PAGE = ''; // 移動先のページ番号。1ページ目は空
   var TARGET_URL = 'https://cdn.jsdelivr.net/gh/umaimann/cpk_gh@main/site/pages/movie-page.html';
   function setPageParam(p) {
     try {
       var u = new URL(location.href);
-      if (p) u.searchParams.set('page', p); else u.searchParams.delete('page');
+      if (p) { u.searchParams.set('page', p); u.searchParams.delete('cpk'); }
+      else { u.searchParams.delete('page'); u.searchParams.set('cpk', '1'); }
       history.replaceState(null, '', u.pathname + u.search + u.hash);
+    } catch (e) {}
+  }
+  // 差し替え済みの fetch / XHR / img.src を元に戻す(移動先で二重にかかるのを防ぐ)
+  function restoreNatives() {
+    var n = window.__cpkNative; if (!n) return;
+    try {
+      window.fetch = n.fetch;
+      XMLHttpRequest.prototype.open = n.open;
+      XMLHttpRequest.prototype.getAllResponseHeaders = n.gah;
+      XMLHttpRequest.prototype.getResponseHeader = n.grh;
+      if (n.imgSrc) Object.defineProperty(HTMLImageElement.prototype, 'src', n.imgSrc);
     } catch (e) {}
   }
   document.addEventListener('click', function (e) {
@@ -377,9 +394,8 @@
     fetch(TARGET_URL, { cache: 'no-cache' })
       .then(function (res) { if (!res.ok) throw new Error(res.status); return res.text(); })
       .then(function (html) {
-        // 前のページのjQueryイベントを全部外してから置き換える(二重初期化防止)
         try { if (window.jQuery) { jQuery(window).off(); jQuery(document).off(); } } catch (err) {}
-        // ★移動先に合わせてURLの ?page= を直す(2→1で ?page=2 が残って2ページ目が再表示されるのを防ぐ)
+        restoreNatives();
         setPageParam(TARGET_PAGE);
         document.open(); document.write(html); document.close(); window.scrollTo(0, 0);
       })
