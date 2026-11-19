@@ -1,0 +1,32 @@
+{
+ "https://www.cho-kaguyahime.com/": {
+  "css": [
+   "ext/b594fbf2fbed.css",
+   "assets/css/common.css",
+   "assets/css/top.css"
+  ],
+  "js": [
+   "ext/c119ddc46606.js",
+   "ext/51a228e7007d.js",
+   "ext/960866c1c4f8.js",
+   "assets/js/incparts.js",
+   "assets/js/jquery.common.js",
+   "assets/js/jquery.top.js"
+  ]
+ },
+ "https://www.cho-kaguyahime.com/movie/": {
+  "css": [
+   "ext/b594fbf2fbed.css",
+   "assets/css/common.css",
+   "assets/css/movie.css"
+  ],
+  "js": [
+   "ext/c119ddc46606.js",
+   "ext/51a228e7007d.js",
+   "ext/960866c1c4f8.js",
+   "assets/js/incparts.js",
+   "assets/js/jquery.common.js",
+   "assets/js/jquery.movie.js"
+  ]
+ }
+}
