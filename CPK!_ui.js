@@ -3,28 +3,34 @@
 
   var ROOT = 'https://www.cho-kaguyahime.com/';
   var ID = 'cho-kaguyahime-gnav-ext';
+  var JSD = 'https://cdn.jsdelivr.net/gh/umaimann/cpk_gh@main/';
 
   if (document.getElementById(ID)) return;
 
   var OVERLAYS = {
     movie: {
-      url: 'https://raw.githubusercontent.com/umaimann/cpk_gh/refs/heads/main/site/pages/movie-page.html',
-      base: 'https://raw.githubusercontent.com/umaimann/cpk_gh/refs/heads/main/site/pages/',
+      url: JSD + 'site/pages/movie-page.html',
+      base: JSD + 'site/pages/',
       title: '映像'
     },
     introduction: {
-      url: 'https://raw.githubusercontent.com/umaimann/cpk_gh/refs/heads/main/html/introduction.html',
-      base: 'https://raw.githubusercontent.com/umaimann/cpk_gh/refs/heads/main/html/',
+      url: JSD + 'html/introduction.html',
+      base: JSD + 'html/',
       title: 'イントロダクション'
     },
     story: {
-      url: 'https://raw.githubusercontent.com/umaimann/cpk_gh/refs/heads/main/html/story.html',
-      base: 'https://raw.githubusercontent.com/umaimann/cpk_gh/refs/heads/main/html/',
+      url: JSD + 'html/story.html',
+      base: JSD + 'html/',
       title: 'あらすじ'
     },
+    music: {
+      url: JSD + 'html/music.html',
+      base: JSD + 'html/',
+      title: '音楽'
+    },
     character: {
-      url: 'https://raw.githubusercontent.com/umaimann/cpk_gh/refs/heads/main/html/character.html',
-      base: 'https://raw.githubusercontent.com/umaimann/cpk_gh/refs/heads/main/html/',
+      url: JSD + 'html/character.html',
+      base: JSD + 'html/',
       title: '登場人物'
     }
   };
