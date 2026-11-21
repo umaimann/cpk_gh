@@ -263,3 +263,76 @@
   if (document.body) inject();
   else document.addEventListener('DOMContentLoaded', inject);
 })();
+
+(() => {
+  const SELECTOR = '#footer, footer.footer';
+  const CSS = `${SELECTOR}{display:none!important}`;
+  const seen = new WeakSet();
+  const frames = new WeakSet();
+
+  const addStyle = (root) => {
+    const isDoc = root.nodeType === 9;
+    const doc = isDoc ? root : root.ownerDocument;
+    const target = isDoc ? (root.head || root.documentElement) : root;
+    if (!target) return;
+    const style = doc.createElement('style');
+    style.textContent = CSS;
+    target.appendChild(style);
+  };
+
+  const hookFrame = (frame) => {
+    const attempt = () => {
+      try {
+        const doc = frame.contentDocument;
+        if (doc && doc.documentElement) watch(doc);
+      } catch (e) {}
+    };
+    attempt();
+    if (!frames.has(frame)) {
+      frames.add(frame);
+      frame.addEventListener('load', attempt);
+    }
+  };
+
+  const sweep = (root) => {
+    if (root.nodeType === 1 && root.matches(SELECTOR)) {
+      root.remove();
+      return;
+    }
+    root.querySelectorAll(SELECTOR).forEach((el) => el.remove());
+    const nodes = root.nodeType === 1
+      ? [root, ...root.querySelectorAll('*')]
+      : root.querySelectorAll('*');
+    for (const el of nodes) {
+      if (el.shadowRoot) watch(el.shadowRoot);
+      if (el.tagName === 'IFRAME') hookFrame(el);
+    }
+  };
+
+  const watch = (root) => {
+    if (seen.has(root)) return;
+    seen.add(root);
+    addStyle(root);
+    sweep(root);
+    new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        for (const node of mutation.addedNodes) {
+          if (node.nodeType === 1) sweep(node);
+        }
+      }
+    }).observe(root, { childList: true, subtree: true });
+  };
+
+  const originalAttachShadow = Element.prototype.attachShadow;
+  Element.prototype.attachShadow = function (init) {
+    const shadow = originalAttachShadow.call(this, init);
+    watch(shadow);
+    return shadow;
+  };
+
+  watch(document);
+
+  document.addEventListener('DOMContentLoaded', () => sweep(document));
+  window.addEventListener('load', () => sweep(document));
+  setInterval(() => sweep(document), 500);
+})();
