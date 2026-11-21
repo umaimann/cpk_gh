@@ -204,6 +204,18 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
 <script src="https://www.cho-kaguyahime.com/assets/js/jquery.music.js"></script>
 <script>
 (function () {
+  function hideLoading() {
+    var l = document.getElementById('loading');
+    if (!l) return;
+    l.style.transition = 'opacity .4s';
+    l.style.opacity = '0';
+    setTimeout(function () { l.style.display = 'none'; }, 400);
+  }
+  setTimeout(hideLoading, 2500);
+})();
+</script>
+<script>
+(function () {
   document.addEventListener('click', function (e) {
     var a = e.target.closest && e.target.closest('.music__tabLink');
     if (!a) return;
