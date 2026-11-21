@@ -262,6 +262,14 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
 </script>
 <script>
 (function () {
+  var HOST = '<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no"><style>html,body{margin:0;height:100%;background:#000;overflow:hidden}iframe{position:fixed;inset:0;width:100%;height:100%;border:0}</style></head><body><iframe id="cpk" name="cpk-frame" allow="autoplay; fullscreen; encrypted-media; picture-in-picture"></iframe><script>window.addEventListener("message",function(e){var d=e.data;if(d&&d.cpk==="go"&&typeof d.html==="string"){document.getElementById("cpk").srcdoc=d.html;}});<\/script></body></html>';
+  function show(html) {
+    if (window.name === 'cpk-frame') { parent.postMessage({ cpk: 'go', html: html }, '*'); return; }
+    document.open();
+    document.write(HOST);
+    document.close();
+    document.getElementById('cpk').srcdoc = html;
+  }
   document.addEventListener('click', function (e) {
     var a = e.target.closest && e.target.closest('.music__tabLink');
     if (!a) return;
@@ -271,7 +279,7 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
     var url = a.href;
     fetch(url, { cache: 'no-cache' })
       .then(function (res) { if (!res.ok) throw new Error(res.status); return res.text(); })
-      .then(function (html) { document.open(); document.write(html); document.close(); window.scrollTo(0, 0); })
+      .then(show)
       .catch(function (err) { console.error('ページの取得に失敗:', err); location.href = url; });
   }, true);
 })();
