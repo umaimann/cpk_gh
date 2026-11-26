@@ -8,31 +8,14 @@
   if (document.getElementById(ID)) return;
 
   var OVERLAYS = {
-    movie: {
-      url: JSD + 'site/pages/movie-page.html',
-      base: JSD + 'site/pages/',
-      title: '映像'
-    },
-    introduction: {
-      url: JSD + 'html/introduction.html',
-      base: JSD + 'html/',
-      title: 'イントロダクション'
-    },
-    story: {
-      url: JSD + 'html/story.html',
-      base: JSD + 'html/',
-      title: 'あらすじ'
-    },
-    music: {
-      url: JSD + 'html/music.html',
-      base: JSD + 'html/',
-      title: '音楽'
-    },
-    character: {
-      url: JSD + 'html/character.html',
-      base: JSD + 'html/',
-      title: '登場人物'
-    }
+    movie: { url: JSD + 'site/pages/movie-page.html', title: '映像' },
+    introduction: { url: JSD + 'html/introduction.html', title: 'イントロダクション' },
+    story: { url: JSD + 'html/story.html', title: 'あらすじ' },
+    music: { url: JSD + 'html/music.html', title: '音楽' },
+    character: { url: JSD + 'html/character.html', title: '登場人物' },
+    staffcast: { url: JSD + 'html/staffcast.html', title: 'スタッフ・キャスト' },
+    'blu-ray': { url: JSD + 'html/bluray.html', title: 'ブルーレイ' },
+    special: { url: JSD + 'html/special-list.html', title: 'スペシャル' }
   };
 
   var GNAV_HTML = `
@@ -75,7 +58,6 @@
   </div>
 </div>`;
 
-  var htmlCache = {};
   var overlay = null;
 
   function addCSS(href) {
@@ -103,10 +85,10 @@
       '#' + ID + '-ov{position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,.75);display:none;align-items:center;justify-content:center;}' +
       '#' + ID + '-ov.is-open{display:flex;}' +
       '#' + ID + '-ov .cg-box{position:relative;width:min(1100px,94vw);height:90vh;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 10px 40px rgba(0,0,0,.5);}' +
-      '#' + ID + '-ov iframe{width:100%;height:100%;border:0;display:block;background:#fff;}' +
-      '#' + ID + '-ov .cg-close{position:absolute;top:8px;right:8px;z-index:2;width:40px;height:40px;border:0;border-radius:50%;background:rgba(0,0,0,.7);color:#fff;font-size:26px;line-height:40px;text-align:center;cursor:pointer;padding:0;}' +
+      '#' + ID + '-ov iframe{position:relative;width:100%;height:100%;border:0;display:block;background:#fff;}' +
+      '#' + ID + '-ov .cg-close{position:absolute;top:8px;right:8px;z-index:3;width:40px;height:40px;border:0;border-radius:50%;background:rgba(0,0,0,.7);color:#fff;font-size:26px;line-height:40px;text-align:center;cursor:pointer;padding:0;}' +
       '#' + ID + '-ov .cg-close:hover{background:#000;}' +
-      '#' + ID + '-ov .cg-msg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#666;font-size:16px;}';
+      '#' + ID + '-ov .cg-msg{position:absolute;inset:0;z-index:1;display:flex;align-items:center;justify-content:center;color:#666;font-size:16px;}';
     document.head.appendChild(st);
   }
 
@@ -118,10 +100,9 @@
     if (!overlay) return;
     overlay.classList.remove('is-open');
     var frame = overlay.querySelector('iframe');
-    if (frame) {
-      frame.srcdoc = '';
-      frame.style.display = 'none';
-    }
+    frame.dataset.active = '0';
+    frame.style.visibility = 'hidden';
+    frame.src = 'about:blank';
     document.removeEventListener('keydown', onKey, true);
   }
 
@@ -132,8 +113,15 @@
       '<div class="cg-box">' +
         '<button type="button" class="cg-close" aria-label="閉じる">×</button>' +
         '<div class="cg-msg">読み込み中...</div>' +
-        '<iframe style="display:none"></iframe>' +
+        '<iframe style="visibility:hidden" data-active="0"></iframe>' +
       '</div>';
+    var frame = overlay.querySelector('iframe');
+    var msg = overlay.querySelector('.cg-msg');
+    frame.addEventListener('load', function () {
+      if (frame.dataset.active !== '1') return;
+      frame.style.visibility = 'visible';
+      msg.style.display = 'none';
+    });
     overlay.addEventListener('click', function (e) {
       if (e.target === overlay || e.target.classList.contains('cg-close')) closeOverlay();
     });
@@ -144,43 +132,19 @@
     var cfg = OVERLAYS[key];
     if (!cfg) return;
     if (!overlay) buildOverlay();
-    overlay.classList.add('is-open');
-    document.addEventListener('keydown', onKey, true);
 
     var msg = overlay.querySelector('.cg-msg');
     var frame = overlay.querySelector('iframe');
-    frame.title = cfg.title;
-
-    function show(html) {
-      if (html.indexOf('<base') === -1) {
-        html = '<base href="' + cfg.base + '">' + html;
-      }
-      frame.srcdoc = html;
-      frame.style.display = 'block';
-      msg.style.display = 'none';
-    }
-
-    if (htmlCache[key]) {
-      show(htmlCache[key]);
-      return;
-    }
 
     msg.textContent = '読み込み中...';
     msg.style.display = 'flex';
-    frame.style.display = 'none';
+    frame.style.visibility = 'hidden';
+    frame.dataset.active = '1';
+    frame.title = cfg.title;
+    frame.src = cfg.url;
 
-    fetch(cfg.url)
-      .then(function (r) {
-        if (!r.ok) throw new Error(r.status);
-        return r.text();
-      })
-      .then(function (t) {
-        htmlCache[key] = t;
-        show(t);
-      })
-      .catch(function () {
-        msg.textContent = '読み込みに失敗しました';
-      });
+    overlay.classList.add('is-open');
+    document.addEventListener('keydown', onKey, true);
   }
 
   function hookWrap(wrap) {
@@ -262,77 +226,4 @@
 
   if (document.body) inject();
   else document.addEventListener('DOMContentLoaded', inject);
-})();
-
-(() => {
-  const SELECTOR = '#footer, footer.footer';
-  const CSS = `${SELECTOR}{display:none!important}`;
-  const seen = new WeakSet();
-  const frames = new WeakSet();
-
-  const addStyle = (root) => {
-    const isDoc = root.nodeType === 9;
-    const doc = isDoc ? root : root.ownerDocument;
-    const target = isDoc ? (root.head || root.documentElement) : root;
-    if (!target) return;
-    const style = doc.createElement('style');
-    style.textContent = CSS;
-    target.appendChild(style);
-  };
-
-  const hookFrame = (frame) => {
-    const attempt = () => {
-      try {
-        const doc = frame.contentDocument;
-        if (doc && doc.documentElement) watch(doc);
-      } catch (e) {}
-    };
-    attempt();
-    if (!frames.has(frame)) {
-      frames.add(frame);
-      frame.addEventListener('load', attempt);
-    }
-  };
-
-  const sweep = (root) => {
-    if (root.nodeType === 1 && root.matches(SELECTOR)) {
-      root.remove();
-      return;
-    }
-    root.querySelectorAll(SELECTOR).forEach((el) => el.remove());
-    const nodes = root.nodeType === 1
-      ? [root, ...root.querySelectorAll('*')]
-      : root.querySelectorAll('*');
-    for (const el of nodes) {
-      if (el.shadowRoot) watch(el.shadowRoot);
-      if (el.tagName === 'IFRAME') hookFrame(el);
-    }
-  };
-
-  const watch = (root) => {
-    if (seen.has(root)) return;
-    seen.add(root);
-    addStyle(root);
-    sweep(root);
-    new MutationObserver((mutations) => {
-      for (const mutation of mutations) {
-        for (const node of mutation.addedNodes) {
-          if (node.nodeType === 1) sweep(node);
-        }
-      }
-    }).observe(root, { childList: true, subtree: true });
-  };
-
-  const originalAttachShadow = Element.prototype.attachShadow;
-  Element.prototype.attachShadow = function (init) {
-    const shadow = originalAttachShadow.call(this, init);
-    watch(shadow);
-    return shadow;
-  };
-
-  watch(document);
-
-  document.addEventListener('DOMContentLoaded', () => sweep(document));
-  window.addEventListener('load', () => sweep(document));
-  setInterval(() => sweep(document), 500);
 })();
