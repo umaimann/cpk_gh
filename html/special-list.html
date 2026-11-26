@@ -268,5 +268,71 @@ height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
 })();
 </script>
+<script>
+(function () {
+  var BASES = [
+    'https://cdn.jsdelivr.net/gh/umaimann/cpk_gh@main/html/',
+    'https://raw.githubusercontent.com/umaimann/cpk_gh/refs/heads/main/html/'
+  ];
+  var EXTS = ['.html', ''];
+  var MAP = {
+    '1555': 'special-screening',
+    '1459': 'special-benefits',
+    '1024': 'special-secondary',
+    '719': 'special-vocalization-rule',
+    '1113': 'special-fanart',
+    '975': 'special-postable-rule',
+    '810': 'special-illustration',
+    '426': 'special-countdown',
+    '384': 'special-wallpaper',
+    '340': 'special-material',
+    '317': 'special-media',
+    '315': 'special-explanation',
+    '305': 'special-visual',
+    '163': 'special-coverillustration',
+    '916': 'special-novelization-dialogue',
+    '868': 'special-comicalization-dialogue',
+    'keyword': 'special-keyword'
+  };
+  function keyOf(href) {
+    var m = href.match(/[?&]id=(\d+)/);
+    if (m) return m[1];
+    if (/\/special\/keyword\/?(?:[?#].*)?$/.test(href)) return 'keyword';
+    return null;
+  }
+  function load(name) {
+    var urls = [];
+    BASES.forEach(function (b) {
+      EXTS.forEach(function (x) { urls.push(b + name + x); });
+    });
+    var i = 0;
+    function next() {
+      if (i >= urls.length) return Promise.reject(new Error('fail'));
+      var url = urls[i++];
+      return fetch(url, { cache: 'no-store' }).then(function (r) {
+        if (!r.ok) throw new Error(String(r.status));
+        return r.text();
+      }).catch(next);
+    }
+    return next();
+  }
+  document.addEventListener('click', function (e) {
+    var a = e.target.closest && e.target.closest('a.special__itemLink');
+    if (!a) return;
+    var k = keyOf(a.href);
+    var name = k && MAP[k];
+    if (!name) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    load(name).then(function (html) {
+      document.open();
+      document.write(html);
+      document.close();
+    }).catch(function () {
+      location.href = a.href;
+    });
+  }, true);
+})();
+</script>
 </body>
 </html>
